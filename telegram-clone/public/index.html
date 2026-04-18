@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Clone</title>
+    <style>
+        * { transition: all 0.2s; }
+        body { margin: 0; font-family: Arial; }
+        :root { --bg: #e6e9ef; --sidebar: #fff; --text: #000; --border: #ccc; }
+        body.dark { --bg: #0e1621; --sidebar: #17212b; --text: #fff; --border: #2b2f36; }
+        .app { display: flex; height: 100vh; }
+        .sidebar { width: 300px; background: var(--sidebar); border-right: 1px solid var(--border); }
+        .header { padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
+        .messages { flex: 1; padding: 15px; overflow-y: auto; }
+        .message { margin: 10px; padding: 8px 12px; border-radius: 18px; max-width: 70%; }
+        .message.own { background: #0084ff; color: white; margin-left: auto; text-align: right; }
+        .message.other { background: var(--sidebar); }
+        .input-area { padding: 15px; display: flex; gap: 10px; border-top: 1px solid var(--border); }
+        .input-area input { flex: 1; padding: 10px; border-radius: 25px; border: 1px solid var(--border); }
+        button { background: #0084ff; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; }
+        .chat-item { padding: 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
+        .search-bar { padding: 10px; }
+        .search-bar input { width: 100%; padding: 8px; border-radius: 20px; }
+        @media (max-width: 700px) { .sidebar { width: 80px; } .chat-item span { display: none; } }
+    </style>
+</head>
+<body>
+<div id="loginScreen" style="display: flex; justify-content: center; align-items: center; height: 100vh; background: var(--bg);">
+    <div style="background: var(--sidebar); padding: 30px; border-radius: 20px;">
+        <h2>Вход</h2>
+        <input type="text" id="usernameInput" placeholder="Твоё имя" style="padding: 10px; width: 200px;">
+        <button id="loginBtn">Войти</button>
+    </div>
+</div>
+
+<div id="app" style="display: none;">
+    <div class="app">
+        <div class="sidebar">
+            <div class="header"><span>📱 Чат</span><button id="themeToggle">🌙</button></div>
+            <div class="search-bar"><input type="text" id="chatSearch" placeholder="Поиск чатов"></div>
+            <div id="chatsList" class="chats-list"></div>
+        </div>
+        <div class="chat-area">
+            <div class="header" id="currentChatName">Выберите чат</div>
+            <div class="messages" id="messages"></div>
+            <div class="input-area">
+                <input type="text" id="messageInput" placeholder="Сообщение">
+                <button id="sendBtn">➤</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+    let currentUser = null;
+    let allMessages = [];
+    let currentChat = 'general';
+    let chats = { general: { name: 'Общий чат', type: 'group' } };
+
+    function renderChats() {
+        const container = document.getElementById('chatsList');
+        container.innerHTML = '';
+        Object.entries(chats).forEach(([id, chat]) => {
+            const div = document.createElement('div');
+            div.className = 'chat-item';
+            div.innerHTML = `<strong>${chat.name}</strong><br><span>${chat.type}</span>`;
+            div.onclick = () => { currentChat = id; document.getElementById('currentChatName').innerText = chat.name; renderMessages(); };
+            container.appendChild(div);
+        });
+    }
+
+    function renderMessages() {
+        const container = document.getElementById('messages');
+        const msgs = allMessages.filter(m => m.chatId === currentChat);
+        container.innerHTML = '';
+        msgs.forEach(msg => {
+            const div = document.createElement('div');
+            div.className = `message ${msg.sender === currentUser ? 'own' : 'other'}`;
+            div.innerHTML = `<b>${msg.sender}</b> ${msg.text}<br><small>${msg.time}</small>`;
+            container.appendChild(div);
+        });
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function sendMessage() {
+        const text = document.getElementById('messageInput').value.trim();
+        if(!text) return;
+        socket.emit('sendMessage', { chatId: currentChat, text, sender: currentUser });
+        document.getElementById('messageInput').value = '';
+    }
+
+    socket.on('loadMessages', (msgs) => { allMessages = msgs; renderMessages(); });
+    socket.on('newMessage', (msg) => { allMessages.push(msg); if(currentChat === msg.chatId) renderMessages(); });
+
+    document.getElementById('loginBtn').onclick = () => {
+        const name = document.getElementById('usernameInput').value.trim();
+        if(name) {
+            currentUser = name;
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('app').style.display = 'block';
+            socket.emit('setUser', name);
+            renderChats();
+        }
+    };
+    document.getElementById('sendBtn').onclick = sendMessage;
+    document.getElementById('messageInput').onkeypress = (e) => { if(e.key === 'Enter') sendMessage(); };
+    document.getElementById('themeToggle').onclick = () => document.body.classList.toggle('dark');
+    document.getElementById('chatSearch').oninput = renderChats;
+</script>
+</body>
+</html>
